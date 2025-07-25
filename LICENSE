@@ -1,0 +1,36 @@
+MIT License
+
+Copyright (c) 2025 MCP DB Schema Tools 개발자
+
+이 소프트웨어는 "있는 그대로(AS IS)" 제공되며, 명시적이든 묵시적이든 어떠한 형태의 보증도 제공하지 않습니다. 
+저작권자는 소프트웨어와 관련하여 발생하는 어떠한 청구, 손해 또는 기타 책임에 대해서도 책임지지 않습니다.
+
+아래 조건을 충족하는 한 누구나 본 소프트웨어의 복사본을 사용, 복사, 수정, 병합, 게시, 배포, 서브라이선스 및/또는 판매할 수 있습니다:
+
+1. 위 저작권 표시와 본 허가 표시를 소프트웨어의 모든 복제물 또는 실질적인 부분에 포함해야 합니다.
+
+자세한 내용은 영어 원문(MIT License)을 참고하세요.
+
+---
+
+MIT License
+
+Copyright (c) 2025 MCP DB Schema Tools Developers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
