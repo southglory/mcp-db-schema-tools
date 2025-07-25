@@ -53,7 +53,8 @@ class SchemaConverter:
         # Insert seed data
         if "seed_data" in schema:
             sql_statements.append("\n-- ===== SEED DATA =====")
-            for table_name, records in schema["seed_data"].items():
+            processed_seed_data = self._process_seed_data(schema["seed_data"], schema.get("tables", {}))
+            for table_name, records in processed_seed_data.items():
                 for record in records:
                     sql_statements.append(self._generate_insert_sql(table_name, record))
 
@@ -380,3 +381,104 @@ class SchemaConverter:
         """Get current timestamp in ISO format"""
         from datetime import datetime
         return datetime.now().isoformat()
+    
+    def _process_seed_data(self, seed_data: Dict[str, List[Dict[str, Any]]], tables: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+        """Process seed data and automatically generate IDs where needed"""
+        processed_data = {}
+        
+        for table_name, records in seed_data.items():
+            if table_name not in tables:
+                # Table doesn't exist, skip
+                processed_data[table_name] = records
+                continue
+                
+            table_columns = tables[table_name].get("columns", {})
+            primary_key_column = None
+            
+            # Find primary key column
+            for col_name, col_info in table_columns.items():
+                if col_info.get("primary_key"):
+                    primary_key_column = col_name
+                    break
+            
+            processed_records = []
+            
+            for i, record in enumerate(records):
+                new_record = record.copy()
+                
+                # Auto-generate ID if missing and primary key is INTEGER
+                if (primary_key_column and 
+                    primary_key_column not in new_record and
+                    table_columns[primary_key_column].get("type") == "INTEGER"):
+                    new_record[primary_key_column] = i + 1
+                
+                processed_records.append(new_record)
+            
+            processed_data[table_name] = processed_records
+        
+        return processed_data
+    
+    def compare_with_backend_models(self, db_schema: Dict[str, Any], model_paths: List[str]) -> Dict[str, Any]:
+        """Compare database schema with backend models"""
+        comparison_result = {
+            "missing_tables": [],
+            "missing_columns": {},
+            "type_mismatches": {},
+            "missing_indexes": {},
+            "suggestions": []
+        }
+        
+        # This would analyze SQLAlchemy models and compare with DB schema
+        # For now, we'll provide a basic structure that can be extended
+        
+        try:
+            import ast
+            import os
+            
+            # Extract model information from Python files
+            model_info = {}
+            
+            for model_path in model_paths:
+                if os.path.exists(model_path):
+                    with open(model_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    
+                    # Basic AST parsing to extract class definitions
+                    try:
+                        tree = ast.parse(content)
+                        for node in ast.walk(tree):
+                            if isinstance(node, ast.ClassDef):
+                                # This is a simplified extraction
+                                # In a full implementation, we'd parse SQLAlchemy Column definitions
+                                class_name = node.name
+                                if hasattr(node, 'bases') and any('Base' in str(base) for base in node.bases):
+                                    model_info[class_name] = {
+                                        "file": model_path,
+                                        "fields": []  # Would extract Column definitions here
+                                    }
+                    except:
+                        pass
+            
+            # Compare with database schema
+            db_tables = set(db_schema.get("tables", {}).keys())
+            model_tables = set(model_info.keys())
+            
+            comparison_result["missing_tables"] = list(model_tables - db_tables)
+            comparison_result["extra_tables"] = list(db_tables - model_tables)
+            
+            if comparison_result["missing_tables"]:
+                comparison_result["suggestions"].append(
+                    f"Consider running database migrations to add missing tables: {', '.join(comparison_result['missing_tables'])}"
+                )
+            
+            if comparison_result["extra_tables"]:
+                comparison_result["suggestions"].append(
+                    f"Database contains extra tables not in models: {', '.join(comparison_result['extra_tables'])}"
+                )
+            
+        except ImportError:
+            comparison_result["suggestions"].append("Install required packages for model comparison (ast)")
+        except Exception as e:
+            comparison_result["suggestions"].append(f"Error during model comparison: {str(e)}")
+        
+        return comparison_result

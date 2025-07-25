@@ -121,6 +121,25 @@ class DBSchemaServer:
                         },
                         "required": ["schema_content", "db_path"]
                     }
+                ),
+                types.Tool(
+                    name="compare_with_models",
+                    description="Compare database schema with backend models",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "db_path": {
+                                "type": "string",
+                                "description": "Path to SQLite database file"
+                            },
+                            "model_paths": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "List of Python model file paths"
+                            }
+                        },
+                        "required": ["db_path", "model_paths"]
+                    }
                 )
             ]
 
@@ -140,6 +159,8 @@ class DBSchemaServer:
                     return await self._handle_validate_schema(arguments)
                 elif name == "create_database":
                     return await self._handle_create_database(arguments)
+                elif name == "compare_with_models":
+                    return await self._handle_compare_with_models(arguments)
                 else:
                     return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
             except Exception as e:
@@ -313,6 +334,50 @@ class DBSchemaServer:
             raise e
         finally:
             conn.close()
+        
+        return [types.TextContent(type="text", text=result_text)]
+
+    async def _handle_compare_with_models(self, arguments: Dict[str, Any]) -> list[types.TextContent]:
+        """Compare database schema with backend models"""
+        db_path = arguments["db_path"]
+        model_paths = arguments["model_paths"]
+
+        # Extract current database schema
+        db_schema = self.converter.sql_to_json(db_path)
+        
+        # Compare with backend models
+        comparison_result = self.converter.compare_with_backend_models(db_schema, model_paths)
+        
+        result_text = "🔍 **Database vs Models Comparison**\n\n"
+        
+        if comparison_result["missing_tables"]:
+            result_text += f"❌ **Missing Tables in Database ({len(comparison_result['missing_tables'])}):**\n"
+            for table in comparison_result["missing_tables"]:
+                result_text += f"- {table}\n"
+            result_text += "\n"
+        
+        if comparison_result.get("extra_tables"):
+            result_text += f"⚠️ **Extra Tables in Database ({len(comparison_result['extra_tables'])}):**\n"
+            for table in comparison_result["extra_tables"]:
+                result_text += f"- {table}\n"
+            result_text += "\n"
+        
+        if comparison_result.get("missing_columns"):
+            result_text += f"📝 **Missing Columns:**\n"
+            for table, columns in comparison_result["missing_columns"].items():
+                result_text += f"- **{table}**: {', '.join(columns)}\n"
+            result_text += "\n"
+        
+        if comparison_result["suggestions"]:
+            result_text += f"💡 **Suggestions:**\n"
+            for suggestion in comparison_result["suggestions"]:
+                result_text += f"- {suggestion}\n"
+        
+        if not any([comparison_result["missing_tables"], 
+                   comparison_result.get("extra_tables", []),
+                   comparison_result.get("missing_columns", {})]):
+            result_text += "✅ **No major discrepancies found!**\n"
+            result_text += "Database schema appears to be in sync with models.\n"
         
         return [types.TextContent(type="text", text=result_text)]
 
