@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-07-26
+
+### Added
+- **New Tool**: `generate_schema_json_from_text` - Generate database schemas directly from business requirements text/documentation
+- **AI-Powered Schema Generation**: Automatically analyze business requirements and create appropriate database tables and relationships
+
+### Fixed
+- **Critical Bug**: Fixed `create_database_from_schema` tool failure with "no such table" error
+- **SQL Parsing**: Improved SQL statement parsing by replacing simple `;` split with line-by-line processing
+- **Database Creation**: Enhanced SQLite database creation with better error handling and transaction management
+- **Seed Data Insertion**: Added table existence validation before attempting seed data insertion
+
+### Improved
+- **Error Handling**: Added comprehensive error handling for database creation process
+- **SQL Execution**: Replaced `cursor.execute()` loop with improved statement parsing for complex DDL
+- **Transaction Safety**: Each SQL statement now commits individually to prevent transaction rollback issues
+- **Debugging**: Added detailed error logging for better troubleshooting of failed statements
+
+### Technical Details
+- Enhanced `_create_sqlite_database()` method with improved SQL statement parsing
+- Added table existence checks before seed data insertion to prevent "no such table" errors
+- Improved exception handling with detailed error messages and graceful fallbacks
+- Fixed SQL statement boundary detection for complex CREATE statements with multiple lines
+
+### Testing
+- Verified end-to-end workflow: Business requirements → JSON schema → SQLite database
+- Tested with complex schema containing 15+ tables with relationships and constraints
+- Validated seed data insertion with automatic table validation
+
+### Breaking Changes
+- None - all improvements maintain backward compatibility
+
 ## [0.2.0] - 2025-07-25
 
 ### Added

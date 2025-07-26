@@ -31,8 +31,8 @@ class DBSchemaServer:
             """List available tools"""
             return [
                 types.Tool(
-                        name="json_to_sql",
-                        description="Convert JSON schema to SQL DDL statements",
+                        name="schema_json_to_sql",
+                        description="Convert MCP DB schema JSON to SQL DDL statements",
                         inputSchema={
                             "type": "object",
                             "properties": {
@@ -43,24 +43,36 @@ class DBSchemaServer:
                                 "output_file": {
                                     "type": "string", 
                                     "description": "Optional output SQL file path"
+                                },
+                                "db_type": {
+                                    "type": "string",
+                                    "description": "Target database type (sqlite, postgresql, mysql)",
+                                    "enum": ["sqlite", "postgresql", "mysql"],
+                                    "default": "sqlite"
                                 }
                             },
                             "required": ["schema_content"]
                         }
                     ),
                 types.Tool(
-                    name="sql_to_json",
-                    description="Extract JSON schema from existing SQLite database",
+                    name="extract_schema_from_db",
+                    description="Extract MCP DB schema format from existing database",
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "db_path": {
                                 "type": "string",
-                                "description": "Path to SQLite database file"
+                                "description": "Path to database file or connection string"
                             },
                             "output_file": {
                                 "type": "string",
                                 "description": "Optional output JSON file path"
+                            },
+                            "db_type": {
+                                "type": "string",
+                                "description": "Source database type (sqlite, postgresql, mysql)",
+                                "enum": ["sqlite", "postgresql", "mysql"],
+                                "default": "sqlite"
                             }
                         },
                         "required": ["db_path"]
@@ -100,8 +112,8 @@ class DBSchemaServer:
                     }
                 ),
                 types.Tool(
-                    name="create_database",
-                    description="Create SQLite database from JSON schema",
+                    name="create_database_from_schema",
+                    description="Create database from MCP DB schema format",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -111,12 +123,18 @@ class DBSchemaServer:
                             },
                             "db_path": {
                                 "type": "string",
-                                "description": "Output SQLite database file path"
+                                "description": "Output database file path or connection string"
                             },
                             "include_seed_data": {
                                 "type": "boolean",
                                 "description": "Whether to insert seed data",
                                 "default": False
+                            },
+                            "db_type": {
+                                "type": "string",
+                                "description": "Target database type (sqlite, postgresql, mysql)",
+                                "enum": ["sqlite", "postgresql", "mysql"],
+                                "default": "sqlite"
                             }
                         },
                         "required": ["schema_content", "db_path"]
@@ -140,6 +158,29 @@ class DBSchemaServer:
                         },
                         "required": ["db_path", "model_paths"]
                     }
+                ),
+                types.Tool(
+                    name="generate_schema_json_from_text",
+                    description="Generate MCP DB schema JSON from business requirements text",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "business_requirements": {
+                                "type": "string",
+                                "description": "Business requirements and logic description in any format"
+                            },
+                            "output_file": {
+                                "type": "string",
+                                "description": "Optional output JSON file path"
+                            },
+                            "database_name": {
+                                "type": "string",
+                                "description": "Database name (defaults to 'generated_db')",
+                                "default": "generated_db"
+                            }
+                        },
+                        "required": ["business_requirements"]
+                    }
                 )
             ]
 
@@ -149,18 +190,20 @@ class DBSchemaServer:
         ) -> list[types.TextContent]:
             """Handle tool calls"""
             try:
-                if name == "json_to_sql":
+                if name == "schema_json_to_sql":
                     return await self._handle_json_to_sql(arguments)
-                elif name == "sql_to_json":
+                elif name == "extract_schema_from_db":
                     return await self._handle_sql_to_json(arguments)
                 elif name == "merge_schemas":
                     return await self._handle_merge_schemas(arguments)
                 elif name == "validate_schema":
                     return await self._handle_validate_schema(arguments)
-                elif name == "create_database":
+                elif name == "create_database_from_schema":
                     return await self._handle_create_database(arguments)
                 elif name == "compare_with_models":
                     return await self._handle_compare_with_models(arguments)
+                elif name == "generate_schema_json_from_text":
+                    return await self._handle_generate_schema(arguments)
                 else:
                     return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
             except Exception as e:
@@ -170,43 +213,67 @@ class DBSchemaServer:
         """Convert JSON schema to SQL DDL"""
         schema_content = arguments["schema_content"]
         output_file = arguments.get("output_file")
+        db_type = arguments.get("db_type", "sqlite")
 
         # Load schema (from file path or direct content)
         schema = self._load_schema(schema_content)
         
         # Convert to SQL
-        sql_statements = self.converter.json_to_sql(schema)
+        sql_statements = self.converter.json_to_sql(schema, db_type)
         
         # Save to file if specified
         if output_file:
             Path(output_file).write_text(sql_statements, encoding="utf-8")
-            result_text = f"✅ SQL DDL generated and saved to: {output_file}\n\n"
+            result_text = f"✅ **{db_type.upper()} SQL DDL generated and saved to:** {output_file}\n\n"
         else:
-            result_text = "✅ SQL DDL generated:\n\n"
+            result_text = f"✅ **{db_type.upper()} SQL DDL generated:**\n\n"
             
         result_text += f"```sql\n{sql_statements}\n```"
         
         return [types.TextContent(type="text", text=result_text)]
 
     async def _handle_sql_to_json(self, arguments: Dict[str, Any]) -> list[types.TextContent]:
-        """Extract JSON schema from SQLite database"""
+        """Extract JSON schema from database with multi-DB support"""
         db_path = arguments["db_path"]
         output_file = arguments.get("output_file")
+        db_type = arguments.get("db_type", "sqlite")
 
-        # Extract schema from database
-        schema = self.converter.sql_to_json(db_path)
-        
-        # Convert to JSON string
-        schema_json = json.dumps(schema, indent=2, ensure_ascii=False)
-        
-        # Save to file if specified
-        if output_file:
-            Path(output_file).write_text(schema_json, encoding="utf-8")
-            result_text = f"✅ JSON schema extracted and saved to: {output_file}\n\n"
-        else:
-            result_text = "✅ JSON schema extracted:\n\n"
+        try:
+            # Extract schema from database
+            schema = self.converter.sql_to_json(db_path, db_type)
             
-        result_text += f"```json\n{schema_json}\n```"
+            # Convert to JSON string
+            schema_json = json.dumps(schema, indent=2, ensure_ascii=False)
+            
+            # Save to file if specified
+            if output_file:
+                Path(output_file).write_text(schema_json, encoding="utf-8")
+                result_text = f"✅ **{db_type.upper()} Schema extracted and saved to:** {output_file}\n\n"
+            else:
+                result_text = f"✅ **{db_type.upper()} Schema extracted:**\n\n"
+            
+            # Add summary
+            table_count = len(schema.get("tables", {}))
+            relationship_count = len(schema.get("relationships", []))
+            
+            result_text += f"📊 **Schema Summary:**\n"
+            result_text += f"- Database: {schema.get('database', {}).get('name', 'unknown')}\n"
+            result_text += f"- Tables: {table_count}\n"
+            result_text += f"- Relationships: {relationship_count}\n\n"
+            
+            result_text += f"📋 **Tables Found:**\n"
+            for table_name, table_info in schema.get("tables", {}).items():
+                col_count = len(table_info.get("columns", {}))
+                desc = table_info.get("description", "")
+                result_text += f"- **{table_name}**: {col_count} columns - {desc}\n"
+            
+            result_text += f"\n```json\n{schema_json}\n```"
+            
+        except ImportError as e:
+            result_text = f"❌ **Import Error:** {str(e)}\n"
+            result_text += f"💡 **Tip:** Install required dependencies with: `pip install psycopg2-binary mysql-connector-python`"
+        except Exception as e:
+            result_text = f"❌ **Schema extraction failed:** {str(e)}"
         
         return [types.TextContent(type="text", text=result_text)]
 
@@ -275,65 +342,42 @@ class DBSchemaServer:
         return [types.TextContent(type="text", text=result_text)]
 
     async def _handle_create_database(self, arguments: Dict[str, Any]) -> list[types.TextContent]:
-        """Create SQLite database from JSON schema"""
+        """Create database from JSON schema with multi-DB support"""
         schema_content = arguments["schema_content"]
         db_path = arguments["db_path"]
         include_seed_data = arguments.get("include_seed_data", False)
+        db_type = arguments.get("db_type", "sqlite")
 
         # Load schema
         schema = self._load_schema(schema_content)
         
-        # Generate SQL DDL
-        sql_statements = self.converter.json_to_sql(schema)
-        
-        # Create database
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
         try:
-            # Execute DDL statements
-            for statement in sql_statements.split(';'):
-                statement = statement.strip()
-                if statement:
-                    cursor.execute(statement)
+            # Create database using new multi-DB method
+            result = self.converter.create_database_with_schema(schema, db_path, db_type, include_seed_data)
             
-            # Insert seed data if requested
-            seed_count = 0
-            if include_seed_data and "seed_data" in schema:
-                for table_name, records in schema["seed_data"].items():
-                    for record in records:
-                        columns = ", ".join(record.keys())
-                        placeholders = ", ".join(["?" for _ in record])
-                        values = list(record.values())
-                        
-                        insert_sql = f"INSERT OR IGNORE INTO {table_name} ({columns}) VALUES ({placeholders})"
-                        cursor.execute(insert_sql, values)
-                        seed_count += 1
+            result_text = f"✅ **{result['db_type'].upper()} Database created successfully!**\n\n"
             
-            conn.commit()
+            if db_type == "sqlite":
+                result_text += f"📁 **Database:** {result['db_path']}\n"
+            elif db_type == "postgresql":
+                result_text += f"🐘 **PostgreSQL:** {result['connection_string']}\n"
+            elif db_type == "mysql":
+                result_text += f"🐬 **MySQL:** {result['connection_config']}\n"
             
-            # Get table info
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
-            tables = [row[0] for row in cursor.fetchall() if row[0] != 'sqlite_sequence']
+            result_text += f"📊 **Tables created:** {result['tables_created']}\n"
             
-            result_text = f"✅ **Database created successfully!**\n\n"
-            result_text += f"📁 **Database:** {db_path}\n"
-            result_text += f"📊 **Tables created:** {len(tables)}\n"
+            if result['seed_records'] > 0:
+                result_text += f"🌱 **Seed records inserted:** {result['seed_records']}\n"
             
-            if include_seed_data:
-                result_text += f"🌱 **Seed records inserted:** {seed_count}\n\n"
-            
-            result_text += f"📋 **Table List:**\n"
-            for table in tables:
-                cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                count = cursor.fetchone()[0]
-                result_text += f"- **{table}**: {count} records\n"
+            result_text += f"\n📋 **Table List:**\n"
+            for table in result['tables']:
+                result_text += f"- **{table}**\n"
                 
+        except ImportError as e:
+            result_text = f"❌ **Import Error:** {str(e)}\n"
+            result_text += f"💡 **Tip:** Install required dependencies with: `pip install psycopg2-binary mysql-connector-python`"
         except Exception as e:
-            conn.rollback()
-            raise e
-        finally:
-            conn.close()
+            result_text = f"❌ **Database creation failed:** {str(e)}"
         
         return [types.TextContent(type="text", text=result_text)]
 
@@ -378,6 +422,44 @@ class DBSchemaServer:
                    comparison_result.get("missing_columns", {})]):
             result_text += "✅ **No major discrepancies found!**\n"
             result_text += "Database schema appears to be in sync with models.\n"
+        
+        return [types.TextContent(type="text", text=result_text)]
+
+    async def _handle_generate_schema(self, arguments: Dict[str, Any]) -> list[types.TextContent]:
+        """Generate JSON schema from business requirements"""
+        business_requirements = arguments["business_requirements"]
+        output_file = arguments.get("output_file")
+        database_name = arguments.get("database_name", "generated_db")
+
+        # Generate schema from business text
+        schema = self.converter.generate_from_text(business_requirements, database_name)
+        
+        # Convert to JSON string
+        schema_json = json.dumps(schema, indent=2, ensure_ascii=False)
+        
+        # Save to file if specified
+        if output_file:
+            Path(output_file).write_text(schema_json, encoding="utf-8")
+            result_text = f"✅ **Schema generated and saved to:** {output_file}\n\n"
+        else:
+            result_text = "✅ **Database schema generated from business requirements!**\n\n"
+            
+        # Add summary
+        table_count = len(schema.get("tables", {}))
+        relationship_count = len(schema.get("relationships", []))
+        
+        result_text += f"📊 **Generated Schema Summary:**\n"
+        result_text += f"- Database: {schema.get('database', {}).get('name', database_name)}\n"
+        result_text += f"- Tables: {table_count}\n"
+        result_text += f"- Relationships: {relationship_count}\n\n"
+        
+        result_text += f"📋 **Tables Created:**\n"
+        for table_name, table_info in schema.get("tables", {}).items():
+            col_count = len(table_info.get("columns", {}))
+            desc = table_info.get("description", "")
+            result_text += f"- **{table_name}**: {col_count} columns - {desc}\n"
+        
+        result_text += f"\n```json\n{schema_json}\n```"
         
         return [types.TextContent(type="text", text=result_text)]
 
